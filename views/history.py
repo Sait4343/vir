@@ -1,16 +1,20 @@
+import pandas as pd
+import streamlit as st
+from datetime import datetime, timedelta
+import pytz
+import math
+
+# 🔥 Імпорт підключення до БД (замість globals)
+from utils.db import supabase
+
 def show_history_page():
     """
     Сторінка історії сканувань.
-    ВЕРСІЯ: PROFILES MAPPING.
+    ВЕРСІЯ: MODULAR + PROFILES MAPPING.
     1. Бере user_email з scan_results.
     2. Шукає власника в таблиці 'profiles'.
     3. Формує ПІБ (first_name + last_name).
     """
-    import pandas as pd
-    import streamlit as st
-    from datetime import datetime, timedelta
-    import pytz
-    import math
 
     # Налаштування часового поясу
     KYIV_TZ = pytz.timezone('Europe/Kiev')
@@ -22,15 +26,7 @@ def show_history_page():
     if 'history_page_number' not in st.session_state:
         st.session_state.history_page_number = 1
 
-    # --- 1. ПІДКЛЮЧЕННЯ ---
-    if 'supabase' in st.session_state:
-        supabase = st.session_state['supabase']
-    elif 'supabase' in globals():
-        supabase = globals()['supabase']
-    else:
-        st.error("🚨 Помилка: Змінна 'supabase' не знайдена.")
-        return
-
+    # --- ПЕРЕВІРКА ПРОЕКТУ ---
     proj = st.session_state.get("current_project")
     if not proj:
         st.info("Спочатку оберіть проект.")
@@ -87,18 +83,21 @@ def show_history_page():
                     pass
 
             # 4. Mentions
-            m_resp = supabase.table("brand_mentions")\
-                .select("scan_result_id, is_my_brand, mention_count")\
-                .in_("scan_result_id", scan_ids)\
-                .execute()
-            mentions_df = pd.DataFrame(m_resp.data) if m_resp.data else pd.DataFrame()
+            # Розбиваємо на чанки, якщо ID дуже багато
+            chunk_size = 200
+            all_mentions = []
+            all_sources = []
+            
+            for i in range(0, len(scan_ids), chunk_size):
+                chunk = scan_ids[i:i + chunk_size]
+                m_resp = supabase.table("brand_mentions").select("scan_result_id, is_my_brand, mention_count").in_("scan_result_id", chunk).execute()
+                if m_resp.data: all_mentions.extend(m_resp.data)
+                
+                s_resp = supabase.table("extracted_sources").select("scan_result_id, is_official").in_("scan_result_id", chunk).execute()
+                if s_resp.data: all_sources.extend(s_resp.data)
 
-            # 5. Sources
-            s_resp = supabase.table("extracted_sources")\
-                .select("scan_result_id, is_official")\
-                .in_("scan_result_id", scan_ids)\
-                .execute()
-            sources_df = pd.DataFrame(s_resp.data) if s_resp.data else pd.DataFrame()
+            mentions_df = pd.DataFrame(all_mentions)
+            sources_df = pd.DataFrame(all_sources)
 
         except Exception as e:
             if "column scan_results.user_email does not exist" in str(e):
@@ -137,7 +136,10 @@ def show_history_page():
     df_scans['keyword'] = df_scans['keyword_id'].map(kw_map).fillna("Видалений запит")
     
     # Timezone Fix
-    df_scans['created_at_dt'] = pd.to_datetime(df_scans['created_at']).dt.tz_convert(KYIV_TZ)
+    df_scans['created_at_dt'] = pd.to_datetime(df_scans['created_at'])
+    if df_scans['created_at_dt'].dt.tz is None:
+        df_scans['created_at_dt'] = df_scans['created_at_dt'].dt.tz_localize('UTC')
+    df_scans['created_at_dt'] = df_scans['created_at_dt'].dt.tz_convert(KYIV_TZ)
     
     # Merge (Безпечне злиття)
     if not mentions_df.empty:
