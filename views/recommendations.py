@@ -1,24 +1,21 @@
+import streamlit as st
+import pandas as pd
+import streamlit.components.v1 as components
+from datetime import datetime, timedelta
+
+# 🔥 Імпорт залежностей з утиліт (важливо для модульності)
+from utils.db import supabase
+from utils.n8n import trigger_ai_recommendation
+
 def show_recommendations_page():
     """
     Сторінка рекомендацій.
-    ВЕРСІЯ: RENAMED FILES & BUTTONS.
+    ВЕРСІЯ: MODULAR & STABLE.
     File prefix: "Recommendations_"
     Button label: "Завантажити Рекомендації"
     """
-    import streamlit as st
-    import pandas as pd
-    import streamlit.components.v1 as components
-    from datetime import datetime, timedelta
 
-    # --- 1. ПІДКЛЮЧЕННЯ ---
-    if 'supabase' in st.session_state:
-        supabase = st.session_state['supabase']
-    elif 'supabase' in globals():
-        supabase = globals()['supabase']
-    else:
-        st.error("🚨 DB Error: Немає з'єднання з базою даних.")
-        return
-
+    # --- ПЕРЕВІРКА ПРОЕКТУ ---
     proj = st.session_state.get("current_project")
     user = st.session_state.get("user")
     
@@ -90,38 +87,36 @@ def show_recommendations_page():
                             st.warning("⏳ Розпочато формування рекомендацій. Будь ласка, не закривайте сторінку і дочекайтеся завершення (це може зайняти до 60 секунд).")
                             
                             with st.spinner("Аналіз даних та генерація звіту..."):
-                                if 'trigger_ai_recommendation' in globals():
-                                    html_res = trigger_ai_recommendation(
-                                        user=user, project=proj, category=info["title"], context_text=info["prompt_context"]
-                                    )
-                                    try:
-                                        supabase.table("strategy_reports").insert({
-                                            "project_id": proj["id"], 
-                                            "category": cat_key, 
-                                            "html_content": html_res, 
-                                            "created_at": datetime.now().isoformat()
-                                        }).execute()
-                                        
-                                        st.success("✅ Рекомендації успішно сформовано!")
-                                        st.markdown(f"""
-                                            <div style="padding:15px; border:1px solid #00C896; border-radius:5px; background-color:#f0fff4;">
-                                                <p>Ваш звіт збережено. Перейдіть у вкладку <b>"Історія рекомендацій"</b>, щоб переглянути його.</p>
-                                            </div>
-                                        """, unsafe_allow_html=True)
-                                        
-                                    except Exception as e:
-                                        st.error(f"Помилка збереження в БД: {e}")
-                                        with st.expander("Резервний перегляд", expanded=True):
-                                            components.html(html_res, height=600, scrolling=True)
-                                            # Кнопка скачування (Резервна)
-                                            st.download_button(
-                                                "📥 Завантажити Рекомендації", 
-                                                html_res, 
-                                                file_name=f"Recommendations_{cat_key}_{safe_brand_name}.html", 
-                                                mime="text/html"
-                                            )
-                                else:
-                                    st.error("Функція trigger_ai_recommendation не знайдена.")
+                                # Виклик функції з utils/n8n.py
+                                html_res = trigger_ai_recommendation(
+                                    user=user, project=proj, category=info["title"], context_text=info["prompt_context"]
+                                )
+                                try:
+                                    supabase.table("strategy_reports").insert({
+                                        "project_id": proj["id"], 
+                                        "category": cat_key, 
+                                        "html_content": html_res, 
+                                        "created_at": datetime.now().isoformat()
+                                    }).execute()
+                                    
+                                    st.success("✅ Рекомендації успішно сформовано!")
+                                    st.markdown(f"""
+                                    <div style="padding:15px; border:1px solid #00C896; border-radius:5px; background-color:#f0fff4;">
+                                        <p>Ваш звіт збережено. Перейдіть у вкладку <b>"Історія рекомендацій"</b>, щоб переглянути його.</p>
+                                    </div>
+                                    """, unsafe_allow_html=True)
+                                    
+                                except Exception as e:
+                                    st.error(f"Помилка збереження в БД: {e}")
+                                    with st.expander("Резервний перегляд", expanded=True):
+                                        components.html(html_res, height=600, scrolling=True)
+                                        # Кнопка скачування (Резервна)
+                                        st.download_button(
+                                            "📥 Завантажити Рекомендації", 
+                                            html_res, 
+                                            file_name=f"Recommendations_{cat_key}_{safe_brand_name}.html", 
+                                            mime="text/html"
+                                        )
 
     # ========================================================
     # TAB 2: ІСТОРІЯ
@@ -147,7 +142,12 @@ def show_recommendations_page():
                 if sel_cat_hist:
                     df_rep = df_rep[df_rep['category'].isin(sel_cat_hist)]
                 
-                now = datetime.now(df_rep['created_at_dt'].dt.tz)
+                # Обробка часових поясів для коректного порівняння
+                if not df_rep.empty and df_rep['created_at_dt'].dt.tz is None:
+                     # Припускаємо UTC, якщо таймзона не задана
+                     df_rep['created_at_dt'] = df_rep['created_at_dt'].dt.tz_localize('UTC')
+                
+                now = datetime.now(df_rep['created_at_dt'].dt.tz if not df_rep.empty else None)
                 
                 if sel_date_range == "Сьогодні":
                     df_rep = df_rep[df_rep['created_at_dt'].dt.date == now.date()]
@@ -164,17 +164,15 @@ def show_recommendations_page():
                         try: date_str = row['created_at'][:16].replace('T', ' ')
                         except: date_str = "-"
                         
-                        # Формуємо красиву дату для файлу (наприклад: 2023-10-25_14-30)
+                        # Формуємо красиву дату для файлу
                         date_file = date_str.replace(" ", "_").replace(":", "-")
 
                         with st.expander(f"📑 {cat_nice} | {date_str}"):
                             c_dl, c_del = st.columns([4, 1])
                             
                             with c_dl:
-                                # 🔥 Нова назва файлу: Recommendations_Category_Brand_Date.html
                                 file_n = f"Recommendations_{row['category']}_{safe_brand_name}_{date_file}.html"
                                 
-                                # 🔥 Нова назва кнопки (без .html)
                                 st.download_button(
                                     label="📥 Завантажити Рекомендації", 
                                     data=row['html_content'], 
