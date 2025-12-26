@@ -4,16 +4,13 @@ import time
 from datetime import datetime, timedelta
 from utils.db import supabase
 
-# --- COOKIE MANAGER (FIX: SINGLETON) ---
+# Initialize Cookie Manager (Singleton pattern to avoid DuplicateKeyError)
 def get_cookie_manager():
-    """Створює менеджер кукі лише один раз за сесію."""
-    if "cookie_manager_instance" not in st.session_state:
-        st.session_state["cookie_manager_instance"] = stx.CookieManager(key="auth_cookie_manager")
-    return st.session_state["cookie_manager_instance"]
+    if "cookie_manager" not in st.session_state:
+        st.session_state.cookie_manager = stx.CookieManager(key="auth_cookie_manager")
+    return st.session_state.cookie_manager
 
-# --- HELPER: ЗАВАНТАЖЕННЯ ПРОЕКТУ ---
 def load_user_project(user_id: str) -> bool:
-    """Знаходить перший активний проект користувача і зберігає в сесію."""
     try:
         res = supabase.table("projects").select("*").eq("user_id", user_id).execute()
         if res.data and len(res.data) > 0:
@@ -23,132 +20,196 @@ def load_user_project(user_id: str) -> bool:
         pass
     return False
 
-# --- HELPER: ОТРИМАННЯ ДЕТАЛЕЙ ЮЗЕРА ---
 def get_user_role_and_details(user_id: str):
     try:
         data = supabase.table("profiles").select("*").eq("id", user_id).execute()
         if data.data:
             p = data.data[0]
             return p.get("role", "user"), {
-                "first_name": p.get("first_name", ""),
-                "last_name": p.get("last_name", ""),
+                "first_name": p.get("first_name"),
+                "last_name": p.get("last_name"),
             }
     except Exception:
         pass
     return "user", {}
 
-# --- ПЕРЕВІРКА СЕСІЇ ---
 def check_session():
-    # Ініціалізуємо менеджер кукі (рендерить iframe, має бути на початку)
+    # Ensure cookie manager is initialized
     cookie_manager = get_cookie_manager()
     
-    # Якщо юзер вже є в пам'яті - виходимо
-    if st.session_state.get("user"):
-        return
+    # Allow cookie manager to load
+    # time.sleep(0.1) # removed to avoid flicker, usually not strictly needed if initialized early
+    
+    if st.session_state.get("user") is None:
+        cookies = cookie_manager.get_all()
+        token = cookies.get("virshi_auth_token")
 
-    # Чекаємо кукі
-    time.sleep(0.1)
-    cookies = cookie_manager.get_all()
-    token = cookies.get("virshi_auth_token")
+        if token:
+            try:
+                res = supabase.auth.get_user(token)
+                if getattr(res, "user", None):
+                    st.session_state["user"] = res.user
+                    role, details = get_user_role_and_details(res.user.id)
+                    st.session_state["role"] = role
+                    st.session_state["user_details"] = details
+                    load_user_project(res.user.id)
+                else:
+                    cookie_manager.delete("virshi_auth_token")
+            except Exception:
+                # If token is invalid or expired
+                cookie_manager.delete("virshi_auth_token")
 
-    if token:
-        try:
-            # Відновлення сесії через Supabase
-            res = supabase.auth.get_user(token)
-            if res and res.user:
+def login_user(email, password):
+    cookie_manager = get_cookie_manager()
+    try:
+        res = supabase.auth.sign_in_with_password(
+            {"email": email, "password": password}
+        )
+        if not res.user:
+            st.error("Не вдалося увійти. Перевірте email та пароль.")
+            return
+
+        st.session_state["user"] = res.user
+        cookie_manager.set(
+            "virshi_auth_token",
+            res.session.access_token,
+            expires_at=datetime.now() + timedelta(days=7),
+        )
+
+        role, details = get_user_role_and_details(res.user.id)
+        st.session_state["role"] = role
+        st.session_state["user_details"] = details
+
+        if load_user_project(res.user.id):
+            st.success("Вхід успішний!")
+
+        st.rerun()
+    except Exception:
+        st.error(
+            "Помилка входу: невірний логін, пароль або налаштування підтвердження email."
+        )
+
+def register_user(email, password, first, last):
+    cookie_manager = get_cookie_manager()
+    try:
+        res = supabase.auth.sign_up(
+            {
+                "email": email,
+                "password": password,
+                "options": {"data": {"first_name": first, "last_name": last}},
+            }
+        )
+
+        if res.user:
+            # Explicitly create profile
+            try:
+                supabase.table("profiles").insert(
+                    {
+                        "id": res.user.id,
+                        "email": email,
+                        "first_name": first,
+                        "last_name": last,
+                        "role": "user",
+                    }
+                ).execute()
+            except Exception:
+                pass
+
+            if res.session:
+                st.success("Реєстрація успішна! Виконуємо вхід...")
                 st.session_state["user"] = res.user
+                cookie_manager.set(
+                    "virshi_auth_token",
+                    res.session.access_token,
+                    expires_at=datetime.now() + timedelta(days=7),
+                )
                 role, details = get_user_role_and_details(res.user.id)
                 st.session_state["role"] = role
                 st.session_state["user_details"] = details
                 load_user_project(res.user.id)
+                st.rerun()
             else:
-                cookie_manager.delete("virshi_auth_token")
-        except Exception:
-            # Якщо токен невалідний
-            pass
+                st.success(
+                    "Реєстрація успішна! Перевірте пошту, підтвердіть email "
+                    "та увійдіть на вкладці «Вхід»."
+                )
+            return True
 
-# --- ВХІД ---
-def login_user(email, password):
-    try:
-        res = supabase.auth.sign_in_with_password({"email": email, "password": password})
-        if res.user:
-            st.session_state["user"] = res.user
-            
-            # Зберігаємо куку
-            cm = get_cookie_manager()
-            cm.set("virshi_auth_token", res.session.access_token, expires_at=datetime.now() + timedelta(days=7))
-            
-            # Завантажуємо дані
-            role, details = get_user_role_and_details(res.user.id)
-            st.session_state["role"] = role
-            st.session_state["user_details"] = details
-            
-            # 🔥 Завантажуємо проект одразу!
-            has_project = load_user_project(res.user.id)
-            
-            st.success("Вхід успішний!")
-            time.sleep(1)
-            st.rerun()
-        else:
-            st.error("Невірний логін або пароль.")
+        st.error("Не вдалося створити користувача. Перевірте налаштування Auth.")
     except Exception as e:
-        st.error(f"Помилка входу: {e}")
-
-# --- РЕЄСТРАЦІЯ ---
-def register_user(email, password, first, last):
-    try:
-        res = supabase.auth.sign_up({
-            "email": email,
-            "password": password,
-            "options": {"data": {"first_name": first, "last_name": last}}
-        })
-
-        if res.user:
-            # Створюємо запис в profiles
-            try:
-                supabase.table("profiles").insert({
-                    "id": res.user.id,
-                    "email": email,
-                    "first_name": first,
-                    "last_name": last,
-                    "role": "user"
-                }).execute()
-            except:
-                pass # Можливо, вже існує
-
-            st.success("Реєстрація успішна! Увійдіть у систему.")
+        if "already registered" in str(e):
+            st.warning("Користувач вже існує. Спробуйте увійти.")
         else:
-            st.error("Не вдалося створити користувача.")
-    except Exception as e:
-        st.error(f"Помилка реєстрації: {e}")
+            st.error(f"Помилка реєстрації: {e}")
+    return False
 
-# --- ВИХІД ---
 def logout():
-    cm = get_cookie_manager()
+    cookie_manager = get_cookie_manager()
     try:
-        cm.delete("virshi_auth_token")
-        supabase.auth.sign_out()
-    except:
+        cookie_manager.delete("virshi_auth_token")
+    except Exception:
         pass
+
+    try:
+        supabase.auth.sign_out()
+    except Exception:
+        pass
+
     st.session_state.clear()
     st.rerun()
 
-# --- UI СТОРІНКИ ВХОДУ ---
 def show_auth_page():
-    st.markdown("<h2 style='text-align: center;'>👋 Вітаємо у Virshi.ai</h2>", unsafe_allow_html=True)
-    t1, t2 = st.tabs(["Вхід", "Реєстрація"])
-    
-    with t1:
-        email = st.text_input("Email", key="l_email")
-        password = st.text_input("Пароль", type="password", key="l_pass")
-        if st.button("Увійти", type="primary", use_container_width=True):
-            login_user(email, password)
-            
-    with t2:
-        re = st.text_input("Email", key="r_email")
-        rp = st.text_input("Пароль", type="password", key="r_pass")
-        c1, c2 = st.columns(2)
-        fn = c1.text_input("Ім'я")
-        ln = c2.text_input("Прізвище")
-        if st.button("Зареєструватися", type="primary", use_container_width=True):
-            register_user(re, rp, fn, ln)
+    # CSS for auth page
+    st.markdown("""
+    <style>
+        .stApp { background-color: #F4F7F6; }
+        [data-testid="stForm"] {
+            background-color: #ffffff; padding: 40px; border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.08); border: 1px solid #EAEAEA;
+        }
+        .stButton > button {
+            width: 100%; background-color: #00C896 !important; color: white !important;
+            border: none; border-radius: 8px; padding: 12px; font-weight: 600; margin-top: 10px;
+        }
+        .stButton > button:hover { background-color: #00a87e !important; }
+        .stTabs [data-baseweb="tab-list"] { gap: 20px; justify-content: center; }
+    </style>
+    """, unsafe_allow_html=True)
+
+    col_l, col_center, col_r = st.columns([1, 1.5, 1])
+
+    with col_center:
+        st.markdown(
+            '<div style="text-align: center; margin-bottom: 20px;">'
+            '<img src="https://raw.githubusercontent.com/virshi-ai/image/refs/heads/main/logo-removebg-preview.png" width="180">'
+            '</div>',
+            unsafe_allow_html=True,
+        )
+        
+        st.markdown("<h3 style='text-align: center; color: #333; margin-bottom: 5px;'>Welcome to Virshi</h3>", unsafe_allow_html=True)
+        st.markdown("<p style='text-align: center; color: #666; margin-bottom: 30px;'>Sign in to manage your AI visibility</p>", unsafe_allow_html=True)
+
+        t1, t2 = st.tabs(["🔑 Вхід", "📝 Реєстрація"])
+
+        with t1:
+            with st.form("login_form"):
+                email = st.text_input("Емейл", placeholder="name@company.com")
+                password = st.text_input("Пароль", type="password")
+                if st.form_submit_button("Увійти"):
+                    if email and password:
+                        login_user(email, password)
+                    else:
+                        st.warning("Введіть емейл та пароль.")
+
+        with t2:
+            with st.form("register_form"):
+                ne = st.text_input("Емейл", placeholder="name@company.com")
+                np = st.text_input("Пароль", type="password")
+                c1, c2 = st.columns(2)
+                fn = c1.text_input("Ім'я")
+                ln = c2.text_input("Прізвище")
+                if st.form_submit_button("Зареєструватися"):
+                    if ne and np and fn:
+                        register_user(ne, np, fn, ln)
+                    else:
+                        st.warning("Всі поля обов'язкові.")
