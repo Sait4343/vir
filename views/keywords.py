@@ -10,13 +10,13 @@ import uuid
 from utils.db import supabase
 from utils.n8n import n8n_trigger_analysis
 
-# ❌ ВИДАЛЕНО ЗВІДСИ: from views.dashboard import show_keyword_details 
-# (Ми перенесемо це всередину функції, щоб уникнути помилки ImportError)
+# Щоб уникнути Circular Import, імпорт show_keyword_details робимо всередині функції або
+# якщо це можливо, переносимо його в окремий файл. Але для простоти зробимо Lazy Import.
 
 def show_keywords_page():
     """
     Сторінка списку запитів.
-    ВЕРСІЯ: MODULAR & STABLE (Circular Import Fix).
+    ВЕРСІЯ: MODULAR & STABLE.
     """
     
     # Ініціалізація лічильника
@@ -92,10 +92,10 @@ def show_keywords_page():
         st.info("Спочатку створіть проект в онбордингу.")
         return
 
-    # 🔥 ВИПРАВЛЕННЯ ЦИКЛІЧНОГО ІМПОРТУ
-    # Імпортуємо тільки тоді, коли це дійсно потрібно (всередині умови)
+    # Якщо вибрано детальний перегляд
     if st.session_state.get("focus_keyword_id"):
-        from views.dashboard import show_keyword_details  # <--- ІМПОРТ ТУТ
+        # 🔥 Lazy Import для уникнення циклічної залежності
+        from views.dashboard import show_keyword_details
         show_keyword_details(st.session_state["focus_keyword_id"])
         return
 
