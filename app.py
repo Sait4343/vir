@@ -1,7 +1,12 @@
 import streamlit as st
-from utils.auth import check_session, login_page, logout
+import time
+
+# 🔥 ВИПРАВЛЕНО: Імпортуємо show_auth_page замість login_page
+from utils.auth import check_session, show_auth_page, logout
 from utils.ui import render_sidebar, load_custom_css
-# Імпорт сторінок
+from utils.db import supabase
+
+# Імпорт сторінок (Views)
 from views.dashboard import show_dashboard
 from views.projects import show_my_projects_page
 from views.keywords import show_keywords_page
@@ -15,19 +20,25 @@ from views.chat import show_chat_page
 from views.admin import show_admin_page
 
 # 1. Config
-st.set_page_config(page_title="AI Visibility by Virshi", page_icon="👁️", layout="wide")
+st.set_page_config(
+    page_title="AI Visibility by Virshi", 
+    page_icon="👁️", 
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
 
 # 2. Styles
-# load_custom_css() # Функція з utils/ui.py, де лежить весь ваш st.markdown з CSS
+load_custom_css() 
 
 # 3. Auth Check
 check_session()
 
 if not st.session_state.get("user"):
-    login_page()
+    # 🔥 ВИПРАВЛЕНО: Викликаємо правильну функцію
+    show_auth_page()
 else:
     # 4. Sidebar & Navigation
-    selected_page = render_sidebar() # Ця функція повертає назву обраної сторінки з option_menu
+    selected_page = render_sidebar() 
 
     # 5. Routing
     if selected_page == "Дашборд":
