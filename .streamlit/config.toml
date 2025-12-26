@@ -1,7 +1,0 @@
-SUPABASE_URL = "https://honujwuyjppukqotmfiv.supabase.co"
-SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhvbnVqd3V5anBwdWtxb3RtZml2Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2NTEwNzc0MiwiZXhwIjoyMDgwNjgzNzQyfQ.yEw3GShJml2OjtuvivrJufe634vk9YVXceOul21wIiw"
-
-N8N_GEN_URL = "https://virshi.app.n8n.cloud/webhook/webhook/generate-prompts"
-N8N_ANALYZE_URL = "https://virshi.app.n8n.cloud/webhook/webhook/analyze"
-N8N_RECO_URL = "https://virshi.app.n8n.cloud/webhook/webhook/generate-recos"
-N8N_CHAT_WEBHOOK = "https://virshi.app.n8n.cloud/webhook/webhook/chat-bot" 
