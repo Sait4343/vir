@@ -97,8 +97,17 @@ def render_sidebar():
         
         st.markdown("---")
         
-        # --- ІНФО ПРО КОРИСТУВАЧА ---
-        user_email = st.session_state.get("user", {}).get("email", "User")
+        # --- ІНФО ПРО КОРИСТУВАЧА (ВИПРАВЛЕНО) ---
+        user_obj = st.session_state.get("user")
+        user_email = "User"
+        
+        if user_obj:
+            # Перевіряємо, чи це об'єкт (через атрибут) або словник (через ключ)
+            if hasattr(user_obj, "email"):
+                user_email = user_obj.email
+            elif isinstance(user_obj, dict):
+                user_email = user_obj.get("email", "User")
+        
         user_role = st.session_state.get("role", "user")
         
         st.caption(f"Ви авторизовані як:\n**{user_role.capitalize()}**")
@@ -109,8 +118,14 @@ def render_sidebar():
         # --- ВИБІР ПРОЕКТУ ---
         if "projects" not in st.session_state or not st.session_state["projects"]:
             try:
-                response = supabase.table("projects").select("*").execute()
-                st.session_state["projects"] = response.data
+                # Отримуємо ID поточного юзера
+                uid = user_obj.id if user_obj and hasattr(user_obj, "id") else (user_obj.get("id") if isinstance(user_obj, dict) else None)
+                
+                if uid:
+                    response = supabase.table("projects").select("*").eq("user_id", uid).execute()
+                    st.session_state["projects"] = response.data
+                else:
+                    st.session_state["projects"] = []
             except:
                 st.session_state["projects"] = []
 
