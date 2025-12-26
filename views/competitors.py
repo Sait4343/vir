@@ -2,16 +2,13 @@ import pandas as pd
 import plotly.express as px
 import streamlit as st
 
-# 🔥 ПРАВИЛЬНИЙ ІМПОРТ: Беремо клієнт з утиліт
+# 🔥 Імпорт підключення до БД (важливо!)
 from utils.db import supabase
 
 def show_competitors_page():
     """
     Сторінка глибокого конкурентного аналізу.
     ВЕРСІЯ: MODULAR & STABLE.
-    1. Тональність: Графік Stacked Bar (🔴/⚪/🟢) для кожного бренду.
-    2. Середня позиція: Топ-10 + Цільовий.
-    3. Ліміт рядків: Мінімум 20.
     """
 
     # --- ПЕРЕВІРКА ПРОЕКТУ ---
@@ -63,8 +60,7 @@ def show_competitors_page():
 
         scan_ids = df_scans['id'].tolist()
         
-        # Завантажуємо згадки (можна додати батчінг, якщо багато даних)
-        # Тут для простоти один запит
+        # Завантажуємо згадки
         mentions_resp = supabase.table("brand_mentions")\
             .select("*")\
             .in_("scan_result_id", scan_ids)\
@@ -142,6 +138,7 @@ def show_competitors_page():
     sent_counts['Total'] = sent_counts.sum(axis=1)
     
     # Відсотки
+    import math # Для floor/ceil якщо треба, тут int
     sent_counts['Neg_Pct'] = (sent_counts['Негативна'] / sent_counts['Total'] * 100).fillna(0).astype(int)
     sent_counts['Neu_Pct'] = (sent_counts['Нейтральна'] / sent_counts['Total'] * 100).fillna(0).astype(int)
     sent_counts['Pos_Pct'] = (sent_counts['Позитивна'] / sent_counts['Total'] * 100).fillna(0).astype(int)
@@ -160,7 +157,7 @@ def show_competitors_page():
     def set_top_n_flag(df, sort_col, n=15, ascending=False):
         """
         Встановлює 'Show' = True для Top N брендів.
-        Гарантовано включає цільовий бренд, навіть якщо він не в топі.
+        Гарантовано включає цільовий бренд.
         """
         df = df.sort_values(sort_col, ascending=ascending).reset_index(drop=True)
         df['Show'] = False
@@ -171,7 +168,6 @@ def show_competitors_page():
         if not target_idx.empty:
             t_idx = target_idx[0]
             if t_idx not in top_indices:
-                # Якщо наш бренд не в топі, замінюємо останнього, щоб показати наш
                 if len(top_indices) == n:
                     top_indices.pop()
                 top_indices.append(t_idx)
@@ -205,7 +201,6 @@ def show_competitors_page():
         if search_list:
             display_df = display_df[display_df['brand_name'].astype(str).str.contains(search_list, case=False, na=False)]
 
-        # Пагінація
         total_rows = len(display_df)
         total_pages = math.ceil(total_rows / rows_list)
         
@@ -232,7 +227,6 @@ def show_competitors_page():
 
         cols_to_show = ['brand_name', 'Mentions', 'Сер. Позиція', 'Тональність_Str']
         
-        # Стилізація таблиці (Pandas Styler)
         styled_df = df_page[cols_to_show].style.apply(highlight_target_row, axis=1)
 
         dynamic_h = (len(df_page) * 35) + 38
@@ -295,7 +289,6 @@ def show_competitors_page():
                     if st.button("➡️", key="n_freq_t"): st.session_state.cp_page_freq += 1; st.rerun()
 
             dynamic_h = (len(df_page) * 35) + 38
-            # Редактор, щоб користувач міг ховати/показувати бренди на графіку
             edited_freq_df = st.data_editor(
                 df_page[['Show', 'Display_Name', 'Mentions']],
                 column_config={
@@ -323,7 +316,6 @@ def show_competitors_page():
             chart_data['Original_Name'] = chart_data['Display_Name'].apply(lambda x: x.replace("🟢 ", ""))
             
             if not chart_data.empty:
-                # Додаємо колір: Зелений для нашого, Сірий/Тіл для інших
                 chart_data['Color'] = chart_data['Original_Name'].apply(lambda x: '#00C896' if x == OFFICIAL_BRAND_NAME else '#90A4AE')
                 
                 fig = px.bar(
@@ -338,7 +330,7 @@ def show_competitors_page():
             else:
                 st.info("Оберіть бренди.")
 
-    # === TAB 3: ТОНАЛЬНІСТЬ (STACKED BAR CHART) ===
+    # === TAB 3: ТОНАЛЬНІСТЬ ===
     with tab_sent:
         c_head, c_search, c_rows = st.columns([2, 2, 1])
         with c_head: st.markdown("##### ⭐ Тональність (Топ-15)")
@@ -398,16 +390,13 @@ def show_competitors_page():
                         if st.button("➡️", key="n_sent_b"): st.session_state.cp_page_sent += 1; st.rerun()
 
         with col_chart:
-            # 🔥 БУДУЄМО ГРАФІК З НАКОПИЧЕННЯМ (STACKED)
             selected_rows = edited_sent_df[edited_sent_df['Show'] == True]
             selected_rows['Original_Name'] = selected_rows['Display_Name'].apply(lambda x: x.replace("🟢 ", ""))
             
-            # Нам треба перетворити дані в "довгий" формат для Plotly (Brand | Sentiment | Value)
             target_brands = selected_rows['Original_Name'].tolist()
             chart_data_src = stats[stats['brand_name'].isin(target_brands)].copy()
             
             if not chart_data_src.empty:
-                # Мелтимо (розгортаємо) датафрейм
                 df_melted = chart_data_src.melt(
                     id_vars=['brand_name'], 
                     value_vars=['Neg_Pct', 'Neu_Pct', 'Pos_Pct'], 
@@ -415,18 +404,16 @@ def show_competitors_page():
                     value_name='Percentage'
                 )
                 
-                # Перейменовуємо для легенди
                 df_melted['Sentiment'] = df_melted['Sentiment_Type'].map({
                     'Neg_Pct': 'Негативна',
                     'Neu_Pct': 'Нейтральна',
                     'Pos_Pct': 'Позитивна'
                 })
                 
-                # Карта кольорів
                 color_map = {
-                    "Негативна": "#FF5252", # Червоний
-                    "Нейтральна": "#CFD8DC", # Світло-сірий
-                    "Позитивна": "#00C896"   # Зелений
+                    "Негативна": "#FF5252",
+                    "Нейтральна": "#CFD8DC",
+                    "Позитивна": "#00C896"
                 }
                 
                 fig = px.bar(
@@ -436,14 +423,13 @@ def show_competitors_page():
                     color="Sentiment",
                     text="Percentage",
                     color_discrete_map=color_map,
-                    # Порядок: Негатив внизу, Нейтрал, Позитив зверху (або як зручно)
                     category_orders={"Sentiment": ["Негативна", "Нейтральна", "Позитивна"]},
                     height=500
                 )
                 
                 fig.update_traces(texttemplate='%{text}%', textposition='inside')
                 fig.update_layout(
-                    barmode='stack', # Робить один стовпчик з частинами
+                    barmode='stack',
                     xaxis_title="", 
                     yaxis_title="Частка (%)", 
                     legend_title="",
@@ -453,7 +439,7 @@ def show_competitors_page():
             else:
                 st.info("Оберіть бренди.")
 
-    # === TAB 4: СЕРЕДНЯ ПОЗИЦІЯ (TOP-10) ===
+    # === TAB 4: СЕРЕДНЯ ПОЗИЦІЯ ===
     with tab_rank:
         c_head, c_search, c_rows = st.columns([2, 2, 1])
         with c_head: st.markdown("##### 🏆 Середня позиція (Топ-10)")
@@ -467,7 +453,6 @@ def show_competitors_page():
             df_for_rank['Display_Name'] = df_for_rank.apply(
                 lambda x: f"🟢 {x['brand_name']}" if x['brand_name'] == OFFICIAL_BRAND_NAME else x['brand_name'], axis=1
             )
-            # 🔥 Топ-10 (n=10)
             df_for_rank = set_top_n_flag(df_for_rank, 'Avg_Rank', n=10, ascending=True)
 
             if search_rank:
@@ -517,13 +502,11 @@ def show_competitors_page():
             chart_data = edited_rank_df[edited_rank_df['Show'] == True].copy()
             chart_data['Original_Name'] = chart_data['Display_Name'].apply(lambda x: x.replace("🟢 ", ""))
             
-            # Колір: Зелений (Ми) vs Сірий (Інші)
             chart_data['Color'] = chart_data['Original_Name'].apply(
                 lambda x: '#00C896' if x == OFFICIAL_BRAND_NAME else '#B0BEC5'
             )
 
             if not chart_data.empty:
-                # Бар чарт
                 fig = px.bar(
                     chart_data, 
                     x='Original_Name', 
@@ -531,7 +514,6 @@ def show_competitors_page():
                     text='Avg_Rank'
                 )
                 
-                # Фарбуємо
                 fig.update_traces(
                     marker_color=chart_data['Color'],
                     texttemplate='%{text:.1f}', 
@@ -543,7 +525,6 @@ def show_competitors_page():
                     yaxis_title="Середня позиція (менше = краще)", 
                     showlegend=False
                 )
-                # 🔥 Інверсія осі Y, щоб 1 було зверху
                 fig.update_yaxes(autorange="reversed")
                 st.plotly_chart(fig, use_container_width=True)
             else:
