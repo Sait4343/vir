@@ -1,7 +1,15 @@
 import streamlit as st
 import time
 
-# 🔥 ВИПРАВЛЕНО: Імпортуємо show_auth_page замість login_page
+# 1. КОНФІГУРАЦІЯ СТОРІНКИ (Має бути першою командою)
+st.set_page_config(
+    page_title="AI Visibility by Virshi",
+    page_icon="👁️",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
+
+# 2. ІМПОРТИ (Після конфігурації)
 from utils.auth import check_session, show_auth_page, logout
 from utils.ui import render_sidebar, load_custom_css
 from utils.db import supabase
@@ -19,47 +27,75 @@ from views.faq import show_faq_page
 from views.chat import show_chat_page
 from views.admin import show_admin_page
 
-# 1. Config
-st.set_page_config(
-    page_title="AI Visibility by Virshi", 
-    page_icon="👁️", 
-    layout="wide",
-    initial_sidebar_state="expanded"
-)
+# 3. ЗАВАНТАЖЕННЯ СТИЛІВ
+load_custom_css()
 
-# 2. Styles
-load_custom_css() 
-
-# 3. Auth Check
+# 4. ПЕРЕВІРКА СЕСІЇ
 check_session()
 
-if not st.session_state.get("user"):
-    # 🔥 ВИПРАВЛЕНО: Викликаємо правильну функцію
-    show_auth_page()
-else:
-    # 4. Sidebar & Navigation
-    selected_page = render_sidebar() 
+# ==========================================
+# ГОЛОВНА ЛОГІКА
+# ==========================================
 
-    # 5. Routing
+def main():
+    # А. Якщо користувач НЕ авторизований -> Показуємо вхід
+    if not st.session_state.get("user"):
+        show_auth_page()
+        return
+
+    # Б. Якщо користувач авторизований:
+    
+    # 1. Рендеримо сайдбар і отримуємо обрану сторінку
+    # Ця функція малює лого, інфо про юзера і меню
+    selected_page = render_sidebar()
+
+    # 2. Логіка примусового створення проекту для нових юзерів
+    # Якщо проекту немає, і це не адмін - перекидаємо на сторінку проектів
+    user_role = st.session_state.get("role", "user")
+    current_proj = st.session_state.get("current_project")
+
+    if not current_proj and user_role not in ["admin", "super_admin"]:
+        if selected_page != "Мої проекти":
+            st.warning("⚠️ Будь ласка, створіть або оберіть проект, щоб продовжити.")
+            show_my_projects_page()
+            return # Зупиняємо виконання, щоб не показувати іншу сторінку
+
+    # 3. Роутинг (Перемикання сторінок)
     if selected_page == "Дашборд":
         show_dashboard()
+        
     elif selected_page == "Мої проекти":
         show_my_projects_page()
+        
     elif selected_page == "Перелік запитів":
         show_keywords_page()
+        
     elif selected_page == "Джерела":
         show_sources_page()
+        
     elif selected_page == "Конкуренти":
         show_competitors_page()
+            
     elif selected_page == "Рекомендації":
         show_recommendations_page()
+
     elif selected_page == "Історія сканувань":
         show_history_page()
+        
     elif selected_page == "Звіти":
         show_reports_page()
+        
     elif selected_page == "FAQ":
         show_faq_page()
+
     elif selected_page == "GPT-Visibility":
         show_chat_page()
+        
     elif selected_page == "Адмін":
-        show_admin_page()
+        if user_role in ["admin", "super_admin"]:
+            show_admin_page()
+        else:
+            st.error("⛔ Доступ заборонено.")
+
+if __name__ == "__main__":
+    main()
