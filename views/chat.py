@@ -1,30 +1,24 @@
+import requests
+import streamlit as st
+import time
+from utils.db import supabase # Імпортуємо підключення до БД
+
 def show_chat_page():
     """
     Сторінка AI-асистента (GPT-Visibility).
     Дизайн: Картковий стиль (Card UI) з кастомними бульбашками повідомлень.
     Логіка: Webhook n8n + Context (Sources, Brand, User).
     """
-    import requests
-    import streamlit as st
-    import time
 
     # --- 1. КОНФІГУРАЦІЯ ---
-    if 'N8N_CHAT_WEBHOOK' not in globals():
-        target_url = st.secrets.get("N8N_CHAT_WEBHOOK", "")
-        if not target_url:
-            st.error("🚨 Не задано посилання N8N_CHAT_WEBHOOK.")
-            return
-    else:
-        target_url = N8N_CHAT_WEBHOOK
-
-    # Підключення до бази
-    if 'supabase' in st.session_state:
-        supabase = st.session_state['supabase']
-    elif 'supabase' in globals():
-        supabase = globals()['supabase']
-    else:
-        st.error("🚨 Змінна 'supabase' не знайдена.")
-        return
+    # Отримуємо URL вебхука (краще винести в secrets або utils/n8n.py)
+    # Якщо він не заданий в secrets, можна використати дефолтний
+    try:
+        N8N_CHAT_WEBHOOK = st.secrets.get("N8N_CHAT_WEBHOOK", "https://virshi.app.n8n.cloud/webhook/webhook/chat-bot")
+    except:
+        N8N_CHAT_WEBHOOK = "https://virshi.app.n8n.cloud/webhook/webhook/chat-bot"
+        
+    target_url = N8N_CHAT_WEBHOOK
 
     headers = {
         "virshi-auth": "hi@virshi.ai2025" 
@@ -256,4 +250,3 @@ def show_chat_page():
             # Додаємо відповідь бота в історію
             st.session_state["chat_messages"].append({"role": "assistant", "content": bot_reply})
             st.rerun()
-        
