@@ -1,18 +1,24 @@
+import streamlit as st
+import pandas as pd
+from datetime import datetime
+import requests
+import re
+import time
+import uuid
+
+# 🔥 ВАЖЛИВО: Імпортуємо залежності з наших утиліт
+# Це замінює перевірки globals(), які не працюють між файлами
+from utils.db import supabase
+from utils.n8n import n8n_trigger_analysis
+
 def show_my_projects_page():
     """
     Сторінка 'Мої проекти'.
-    ВЕРСІЯ: EDIT PROJECT NAME IN LIST.
-    Додано можливість редагувати назву проекту (олівець -> інпут -> зберегти).
+    ВЕРСІЯ: MODULAR & STABLE.
     """
-    import streamlit as st
-    import pandas as pd
-    from datetime import datetime
-    import requests
-    import re
-    import time
-    import uuid
     
     # --- КОНСТАНТИ ---
+    # Можна винести в utils/n8n.py, але поки залишимо тут для стабільності
     N8N_GEN_URL = "https://virshi.app.n8n.cloud/webhook/webhook/generate-prompts"
 
     # --- CSS ---
@@ -40,15 +46,7 @@ def show_my_projects_page():
     </style>
     """, unsafe_allow_html=True)
 
-    # --- ПІДКЛЮЧЕННЯ ---
-    if 'supabase' in st.session_state:
-        supabase = st.session_state['supabase']
-    elif 'supabase' in globals():
-        supabase = globals()['supabase']
-    else:
-        st.error("🚨 Помилка підключення до БД.")
-        return
-
+    # --- ПЕРЕВІРКА АВТОРИЗАЦІЇ ---
     user = st.session_state.get("user")
     if not user:
         st.error("Потрібна авторизація.")
@@ -59,7 +57,7 @@ def show_my_projects_page():
     author_name = f"{user_details.get('first_name', '')} {user_details.get('last_name', '')}".strip()
     if not author_name: author_name = user.email
 
-    # --- ХЕЛПЕР: ГЕНЕРАЦІЯ ---
+    # --- ХЕЛПЕР: ГЕНЕРАЦІЯ (Локальний) ---
     def trigger_keyword_generation(brand, domain, industry, products):
         payload = { "brand": brand, "domain": domain, "industry": industry, "products": products }
         headers = {"virshi-auth": "hi@virshi.ai2025"}
@@ -131,10 +129,8 @@ def show_my_projects_page():
                             # Резервний логотип (Google Favicon)
                             backup_logo = f"https://www.google.com/s2/favicons?domain={clean_d}&sz=128" if clean_d else ""
 
-                            # Відображення через HTML (ВИПРАВЛЕНО СИНТАКСИС)
+                            # Відображення через HTML
                             if logo_url_src:
-                                # Пишемо в один рядок, використовуючи одинарні лапки для Python і подвійні для HTML
-                                # Для JS всередині HTML використовуємо екрановані лапки \'
                                 img_html = f'<img src="{logo_url_src}" style="width: 80px; height: 80px; object-fit: contain; border-radius: 8px; border: 1px solid #eee; padding: 5px;" onerror="this.onerror=null; this.src=\'{backup_logo}\';">'
                                 st.markdown(img_html, unsafe_allow_html=True)
                             else:
@@ -163,7 +159,7 @@ def show_my_projects_page():
                                     else:
                                         st.session_state["edit_proj_id"] = None
                                         st.rerun()
-                                        
+                                    
                                 if c_canc.button("❌", key=f"cncl_{p['id']}", help="Скасувати"):
                                     st.session_state["edit_proj_id"] = None
                                     st.rerun()
@@ -371,7 +367,6 @@ def show_my_projects_page():
             save_only = b1.button("💾 Зберегти проект", use_container_width=True)
             save_run = b2.button("🚀 Зберегти та Запустити", type="primary", use_container_width=True)
 
-# ЛОГІКА ЗБЕРЕЖЕННЯ (ЗАМІНИТИ ВЕСЬ ЦЕЙ БЛОК)
         if save_only or save_run:
             final_project_name = new_proj_name_val if new_proj_name_val else new_brand_val
             
@@ -403,39 +398,34 @@ def show_my_projects_page():
                             kws_data = [{"project_id": new_proj_id, "keyword_text": kw, "is_active": True} for kw in final_kws_clean]
                             supabase.table("keywords").insert(kws_data).execute()
 
-                        # 4. Встановлюємо проект в сесію (важливо для нових юзерів)
+                        # 4. Встановлюємо проект в сесію
                         st.session_state["current_project"] = res_proj.data[0]
 
                         # 5. ЗАПУСК АНАЛІЗУ (ПОШТУЧНО)
                         if save_run:
-                            if 'n8n_trigger_analysis' in globals():
-                                my_bar = st.progress(0, text="Ініціалізація...")
-                                
-                                # Рахуємо загальну к-сть операцій
-                                total_ops = len(final_kws_clean) * len(selected_llms)
-                                if total_ops == 0: total_ops = 1 # Щоб не ділити на 0
-                                current_op = 0
-                                
-                                # Цикл: Слова -> Моделі
-                                for kw_item in final_kws_clean:
-                                    for model_item in selected_llms:
-                                        current_op += 1
-                                        prog_val = min(current_op / total_ops, 1.0)
-                                        my_bar.progress(prog_val, text=f"Аналіз: {kw_item} ({model_item})...")
-                                        
-                                        # Виклик функції (вона має приймати список, тому [kw_item])
-                                        n8n_trigger_analysis(
-                                            project_id=new_proj_id, 
-                                            keywords=[kw_item], 
-                                            brand_name=new_brand_val, 
-                                            models=[model_item]
-                                        )
-                                        time.sleep(0.2) # Пауза між запитами
-                                
-                                my_bar.progress(1.0, text="Готово!")
-                                st.toast(f"✅ Проект '{new_brand_val}' створено! Аналіз запущено.", icon="🚀")
-                            else:
-                                st.error("Функція аналізу не знайдена.")
+                            # Прямий виклик імпортованої функції
+                            my_bar = st.progress(0, text="Ініціалізація...")
+                            
+                            total_ops = len(final_kws_clean) * len(selected_llms)
+                            if total_ops == 0: total_ops = 1 
+                            current_op = 0
+                            
+                            for kw_item in final_kws_clean:
+                                for model_item in selected_llms:
+                                    current_op += 1
+                                    prog_val = min(current_op / total_ops, 1.0)
+                                    my_bar.progress(prog_val, text=f"Аналіз: {kw_item} ({model_item})...")
+                                    
+                                    n8n_trigger_analysis(
+                                        project_id=new_proj_id, 
+                                        keywords=[kw_item], 
+                                        brand_name=new_brand_val, 
+                                        models=[model_item]
+                                    )
+                                    time.sleep(0.2) 
+                            
+                            my_bar.progress(1.0, text="Готово!")
+                            st.toast(f"✅ Проект '{new_brand_val}' створено! Аналіз запущено.", icon="🚀")
                         else:
                             st.toast(f"✅ Проект '{new_brand_val}' успішно збережено!", icon="💾")
 
@@ -452,4 +442,3 @@ def show_my_projects_page():
                     st.error(f"Помилка створення: {e}")
             else: 
                 st.warning("Заповніть обов'язкові поля.")
-                
