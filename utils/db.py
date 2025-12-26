@@ -1,11 +1,11 @@
 import streamlit as st
 from supabase import create_client, Client
 
-# Використовуємо кешування, щоб не перепідключатися при кожному кліку
+# Use st.cache_resource to initialize the client once
 @st.cache_resource
 def init_supabase() -> Client:
     try:
-        # Отримуємо ключі з st.secrets (налаштовані у .streamlit/secrets.toml або в хмарі)
+        # Access secrets using dictionary syntax as in your working code
         url = st.secrets["SUPABASE_URL"]
         key = st.secrets["SUPABASE_KEY"]
         return create_client(url, key)
@@ -13,5 +13,5 @@ def init_supabase() -> Client:
         st.error(f"CRITICAL ERROR: Database Connection Failed. {e}")
         st.stop()
 
-# Створюємо глобальний об'єкт, який імпортують інші файли
+# Create the global supabase object
 supabase = init_supabase()
