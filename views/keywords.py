@@ -9,12 +9,14 @@ import uuid
 # 🔥 Імпорт залежностей з утиліт
 from utils.db import supabase
 from utils.n8n import n8n_trigger_analysis
-from views.dashboard import show_keyword_details  # Імпорт сторінки деталей запиту
+
+# ❌ ВИДАЛЕНО ЗВІДСИ: from views.dashboard import show_keyword_details 
+# (Ми перенесемо це всередину функції, щоб уникнути помилки ImportError)
 
 def show_keywords_page():
     """
     Сторінка списку запитів.
-    ВЕРСІЯ: MODULAR & STABLE.
+    ВЕРСІЯ: MODULAR & STABLE (Circular Import Fix).
     """
     
     # Ініціалізація лічильника
@@ -90,8 +92,10 @@ def show_keywords_page():
         st.info("Спочатку створіть проект в онбордингу.")
         return
 
-    # Якщо вибрано детальний перегляд
+    # 🔥 ВИПРАВЛЕННЯ ЦИКЛІЧНОГО ІМПОРТУ
+    # Імпортуємо тільки тоді, коли це дійсно потрібно (всередині умови)
     if st.session_state.get("focus_keyword_id"):
+        from views.dashboard import show_keyword_details  # <--- ІМПОРТ ТУТ
         show_keyword_details(st.session_state["focus_keyword_id"])
         return
 
