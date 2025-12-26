@@ -1,33 +1,25 @@
+import pandas as pd
+import plotly.express as px
+import streamlit as st
+import time
+from urllib.parse import urlparse
+
+# 🔥 Імпорт підключення до БД (важливо!)
+from utils.db import supabase
+
 def show_sources_page():
     """
     Сторінка джерел.
-    ВЕРСІЯ: FIXED ENUM & DESIGN UPDATE.
-    1. Виправлено помилку 'invalid input value for enum'.
-    2. Дизайн редагування змінено на стиль 'список карток' (як у запитах).
-    3. Додано мапінг типів (Ukr -> Eng).
+    ВЕРСІЯ: MODULAR & STABLE.
     """
-    import pandas as pd
-    import plotly.express as px
-    import streamlit as st
-    import time
-    from urllib.parse import urlparse
-    
-    # Підключення
-    if 'supabase' not in globals():
-        if 'supabase' in st.session_state:
-            supabase = st.session_state['supabase']
-        else:
-            st.error("🚨 Помилка: Змінна 'supabase' не знайдена.")
-            return
-    else:
-        supabase = globals()['supabase']
 
+    # --- ПЕРЕВІРКА ПРОЕКТУ ---
     proj = st.session_state.get("current_project")
     if not proj:
         st.info("Спочатку оберіть проект.")
         return
 
-    # --- CSS для зелених номерів (дублюємо тут про всяк випадок) ---
+    # --- CSS ---
     st.markdown("""
     <style>
         .green-number { 
@@ -100,6 +92,7 @@ def show_sources_page():
         # Extracted Sources
         df_master = pd.DataFrame()
         if scan_ids:
+            # Читаємо батчами, якщо ID багато, але для простоти тут один запит (можна оптимізувати пізніше)
             sources_resp = supabase.table("extracted_sources").select("*").in_("scan_result_id", scan_ids).execute()
             if sources_resp.data:
                 df_master = pd.DataFrame(sources_resp.data)
@@ -220,7 +213,7 @@ def show_sources_page():
 
         st.divider()
 
-        # --- РЕДАКТОР WHITELIST (НОВИЙ ДИЗАЙН) ---
+        # --- РЕДАКТОР WHITELIST ---
         st.subheader("⚙️ Керування списком (Whitelist)")
         
         if "edit_whitelist_mode" not in st.session_state:
@@ -264,7 +257,7 @@ def show_sources_page():
                 st.session_state["temp_assets"] = assets_list_dicts.copy()
                 st.rerun()
         
-        # --- РЕЖИМ РЕДАГУВАННЯ (Custom Design) ---
+        # --- РЕЖИМ РЕДАГУВАННЯ ---
         else:
             st.info("Додайте або видаліть домени. Натисніть 'Зберегти' для застосування змін.")
             
@@ -325,7 +318,6 @@ def show_sources_page():
                         for item in st.session_state["temp_assets"]:
                             d_val = str(item["Домен"]).strip()
                             if d_val:
-                                # Конвертація "Веб-сайт" -> "website"
                                 db_type_val = TYPE_UI_TO_DB.get(item["Мітка"], "website")
                                 
                                 insert_data.append({
