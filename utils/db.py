@@ -6,9 +6,10 @@ from supabase import create_client, Client
 @st.cache_resource
 def init_supabase() -> Client:
     try:
-        SUPABASE_URL = st.secrets["https://honujwuyjppukqotmfiv.supabase.co"]
-        SUPABASE_KEY = st.secrets["eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhvbnVqd3V5anBwdWtxb3RtZml2Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc2NTEwNzc0MiwiZXhwIjoyMDgwNjgzNzQyfQ.yEw3GShJml2OjtuvivrJufe634vk9YVXceOul21wIiw"]
-        return create_client(SUPABASE_URL, SUPABASE_KEY)
+        # Тут ми беремо ключі за ІМЕНЕМ змінної у файлі secrets.toml
+        url = st.secrets["SUPABASE_URL"]
+        key = st.secrets["SUPABASE_KEY"]
+        return create_client(url, key)
     except Exception as e:
         st.error(f"CRITICAL ERROR: Database Connection Failed. {e}")
         st.stop()
