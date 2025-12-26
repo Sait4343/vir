@@ -1,34 +1,40 @@
+import pandas as pd
+import streamlit as st
+from datetime import datetime
+import time
+import io
+import re
+import uuid
+
+# 🔥 Імпорт залежностей з утиліт
+from utils.db import supabase
+from utils.n8n import n8n_trigger_analysis
+from views.dashboard import show_keyword_details  # Імпорт сторінки деталей запиту
+
 def show_keywords_page():
     """
     Сторінка списку запитів.
-    ВЕРСІЯ: ADDED 'PASTE LIST' TAB.
-    Додано можливість масового додавання запитів списком з опцією запуску аналізу.
+    ВЕРСІЯ: MODULAR & STABLE.
     """
-    import pandas as pd
-    import streamlit as st
-    from datetime import datetime
-    import time
-    import io 
-    import re 
     
-    # Ініціалізація лічильника для примусового оновлення UI
+    # Ініціалізація лічильника
     if "bulk_update_counter" not in st.session_state:
         st.session_state["bulk_update_counter"] = 0
 
     # CSS Стилізація
     st.markdown("""
     <style>
-        .green-number {
-            background-color: #00C896;
-            color: white;
-            width: 28px;
-            height: 28px;
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-weight: bold;
-            font-size: 14px;
+        .green-number { 
+            background-color: #00C896; 
+            color: white; 
+            width: 28px; 
+            height: 28px; 
+            border-radius: 50%; 
+            display: flex; 
+            align-items: center; 
+            justify-content: center; 
+            font-weight: bold; 
+            font-size: 14px; 
             margin-top: 5px; 
         }
         div[data-testid="stColumn"]:nth-of-type(3) button[kind="secondary"] {
@@ -66,15 +72,6 @@ def show_keywords_page():
         "Google Gemini": "gemini-1.5-pro"
     }
 
-    if 'supabase' not in globals():
-        if 'supabase' in st.session_state:
-            supabase = st.session_state['supabase']
-        else:
-            st.error("🚨 Помилка: Змінна 'supabase' не знайдена.")
-            return
-    else:
-        supabase = globals()['supabase']
-
     if "kw_input_count" not in st.session_state:
         st.session_state["kw_input_count"] = 1
 
@@ -93,10 +90,10 @@ def show_keywords_page():
         st.info("Спочатку створіть проект в онбордингу.")
         return
 
+    # Якщо вибрано детальний перегляд
     if st.session_state.get("focus_keyword_id"):
-        if 'show_keyword_details' in globals():
-            show_keyword_details(st.session_state["focus_keyword_id"])
-            return
+        show_keyword_details(st.session_state["focus_keyword_id"])
+        return
 
     st.markdown("<h3 style='padding-top:0;'>📋 Перелік запитів</h3>", unsafe_allow_html=True)
 
@@ -124,7 +121,6 @@ def show_keywords_page():
     # ========================================================
     with st.expander("✏️ Редагування запитів", expanded=False): 
         
-        # 🔥 ДОДАНО НОВУ ВКЛАДКУ "📋 Вставити списком"
         tab_manual, tab_paste, tab_import, tab_export, tab_auto = st.tabs(["✍️ Ввести вручну", "📋 Вставити списком", "📥 Імпорт (Excel / URL)", "📤 Експорт (Excel)", "⚙️ Автозапуск"])
 
         # --- TAB 1: ВРУЧНУ ---
@@ -169,10 +165,9 @@ def show_keywords_page():
                             res = supabase.table("keywords").insert(insert_data).execute()
                             if res.data:
                                 with st.spinner(f"Зберігаємо та запускаємо аналіз..."):
-                                    if 'n8n_trigger_analysis' in globals():
-                                        for new_kw in new_keywords_list:
-                                            n8n_trigger_analysis(proj["id"], [new_kw], proj.get("brand_name"), models=selected_models_manual)
-                                            time.sleep(0.5) 
+                                    for new_kw in new_keywords_list:
+                                        n8n_trigger_analysis(proj["id"], [new_kw], proj.get("brand_name"), models=selected_models_manual)
+                                        time.sleep(0.5) 
                                     st.success(f"Додано {len(new_keywords_list)} запитів!")
                                     st.session_state["kw_input_count"] = 1
                                     for key in list(st.session_state.keys()):
@@ -184,7 +179,7 @@ def show_keywords_page():
                     else:
                         st.warning("Введіть хоча б один запит.")
 
-        # --- TAB 2: ВСТАВИТИ СПИСКОМ (НОВИЙ ФУНКЦІОНАЛ) ---
+        # --- TAB 2: ВСТАВИТИ СПИСКОМ ---
         with tab_paste:
             st.info("💡 Вставте список запитів. Кожен новий запит — з нового рядка.")
             paste_text = st.text_area("Список запитів", height=150, key="kw_paste_area", placeholder="купити квитки\nвідгуки про бренд\nнайкращі ціни")
@@ -235,13 +230,12 @@ def show_keywords_page():
                                 res = supabase.table("keywords").insert(insert_data).execute()
                                 if res.data:
                                     with st.spinner(f"Обробка {len(lines)} запитів..."):
-                                        if 'n8n_trigger_analysis' in globals():
-                                            my_bar = st.progress(0, text="Запуск...")
-                                            total = len(lines)
-                                            for i, kw in enumerate(lines):
-                                                n8n_trigger_analysis(proj["id"], [kw], proj.get("brand_name"), models=selected_models_paste)
-                                                my_bar.progress((i + 1) / total)
-                                                time.sleep(0.3)
+                                        my_bar = st.progress(0, text="Запуск...")
+                                        total = len(lines)
+                                        for i, kw in enumerate(lines):
+                                            n8n_trigger_analysis(proj["id"], [kw], proj.get("brand_name"), models=selected_models_paste)
+                                            my_bar.progress((i + 1) / total)
+                                            time.sleep(0.3)
                                         st.success("Успішно збережено та запущено!")
                                         time.sleep(2)
                                         st.rerun()
@@ -347,13 +341,12 @@ def show_keywords_page():
                                 res = supabase.table("keywords").insert(insert_data).execute()
                                 if res.data:
                                     with st.spinner(f"Обробка {len(preview_kws)} запитів..."):
-                                        if 'n8n_trigger_analysis' in globals():
-                                            my_bar = st.progress(0, text="Запуск...")
-                                            total = len(preview_kws)
-                                            for i, kw in enumerate(preview_kws):
-                                                n8n_trigger_analysis(proj["id"], [kw], proj.get("brand_name"), models=selected_models_import)
-                                                my_bar.progress((i + 1) / total)
-                                                time.sleep(0.3)
+                                        my_bar = st.progress(0, text="Запуск...")
+                                        total = len(preview_kws)
+                                        for i, kw in enumerate(preview_kws):
+                                            n8n_trigger_analysis(proj["id"], [kw], proj.get("brand_name"), models=selected_models_import)
+                                            my_bar.progress((i + 1) / total)
+                                            time.sleep(0.3)
                                         st.success("Успішно збережено та запущено!")
                                         time.sleep(2)
                                         st.rerun()
