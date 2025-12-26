@@ -1,10 +1,10 @@
+import streamlit as st
+
 def show_faq_page():
     """
     Сторінка FAQ & Support.
     ВЕРСІЯ: TOP-20 QUESTIONS + CONTACTS.
     """
-    import streamlit as st
-
     st.title("❓ Центр підтримки та FAQ")
 
     # --- 1. Цінність платформи ---
