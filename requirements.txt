@@ -7,3 +7,7 @@ extra-streamlit-components
 requests
 openpyxl
 xlsxwriter
+streamlit
+extra-streamlit-components
+supabase
+streamlit-option-menu
